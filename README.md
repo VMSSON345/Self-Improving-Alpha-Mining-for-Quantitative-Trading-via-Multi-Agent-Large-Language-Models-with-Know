@@ -1,12 +1,24 @@
 # LLM-Based Alpha Mining with Knowledge Accumulation
 
-An automated quantitative research system that leverages Large Language Models (LLMs) to **generate, evaluate, refine, and accumulate alpha factors** for the Vietnamese stock market.
+An automated quantitative-research system that uses Large Language Models (LLMs) to **generate, review, backtest, refine, and accumulate alpha factors** for the Vietnamese stock market.
 
-This repository implements the framework introduced in our paper:
+This repository accompanies our published paper:
 
-> **Self-improving alpha mining for quantitative trading via multi-agent large language models with knowledge base accumulation**
-> Vu Minh-Son, Pham The-Trung, and Tran Hong-Viet
-> *Machine Learning with Applications*, Elsevier, 2026, Article 100987.
+> **Self-improving alpha mining for quantitative trading via multi-agent large language models with knowledge base accumulation**  
+> Minh-Son Vu, The-Trung Pham, and Hong-Viet Tran  
+> *Machine Learning with Applications*, Volume 25, 2026, Article 100987  
+> **DOI:** [10.1016/j.mlwa.2026.100987](https://doi.org/10.1016/j.mlwa.2026.100987)
+
+---
+
+## Overview
+
+The framework automates the alpha-discovery cycle with a **nested multi-agent architecture**, a deterministic backtesting engine, and two complementary knowledge bases:
+
+- **Main Knowledge Base** — stores successful alpha discoveries for reuse in later generations.
+- **101 Alpha Knowledge Base** — provides structural priors derived from the WorldQuant 101 Formulaic Alphas.
+
+The system uses an **inner loop** to improve code quality before backtesting and an **outer loop** to evaluate financial performance, incorporate feedback, and accumulate the best qualifying alpha into the Main Knowledge Base.
 
 ---
 
@@ -14,125 +26,88 @@ This repository implements the framework introduced in our paper:
 
 ![Alpha Mining Architecture](templates/assets/icons/image.png)
 
-The system follows a multi-agent iterative alpha-mining framework in which LLM agents generate candidate factors, evaluate their implementation, analyze backtesting results, and progressively improve future candidates using accumulated knowledge.
-
-| Component        | Role                                                                                                               |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `WriterAgent`    | Generates alpha-factor code from a natural-language trading idea and retrieved knowledge-base context              |
-| `JudgeAgent`     | Reviews the generated alpha implementation before backtesting                                                      |
-| `BacktestEngine` | Executes historical backtests and computes evaluation metrics such as IC, Sharpe Ratio, Win Rate, and Max Drawdown |
-| `ReviewerAgent`  | Analyzes backtesting results and provides feedback for subsequent refinement rounds                                |
-| `Main KB`        | Stores validated and high-quality alpha factors discovered in previous runs                                        |
-| `101 Alpha KB`   | Provides reference patterns derived from the WorldQuant 101 Formulaic Alphas                                       |
-
----
-
-## Alpha Mining Workflow
-
-The alpha-mining process consists of iterative **inner-loop refinement** and **outer-loop knowledge accumulation**.
-
-```text
-Trading Idea
-     │
-     ▼
-Knowledge Retrieval
-     │
-     ├── Main KB
-     └── 101 Alpha KB
-     │
-     ▼
-WriterAgent
-     │
-     ▼
-JudgeAgent
-     │
-     ▼
-BacktestEngine
-     │
-     ▼
-ReviewerAgent
-     │
-     ├── Feedback → Inner Loop Refinement
-     │
-     └── Validated Alpha → Main KB
-                         │
-                         ▼
-              Future Alpha Mining Runs
-```
-
-The framework allows previously discovered alpha factors and feedback to become reusable knowledge for future alpha-generation tasks.
+| Component | Role |
+| --- | --- |
+| `WriterAgent` | Generates executable alpha code and its mathematical representation from a trading idea and retrieved context |
+| `JudgeAgent` | Reviews code quality, trading logic, robustness, and look-ahead safety before backtesting |
+| `BacktestEngine` | Executes factors on historical market data and computes quantitative performance metrics |
+| `ReviewerAgent` | Interprets backtest results and provides feedback for subsequent outer-loop iterations |
+| `Main KB` | Stores validated alpha records accumulated from previous discovery runs |
+| `101 Alpha KB` | Supplies reusable formula structures and operator patterns from the WorldQuant 101 Formulaic Alphas |
+| `KB Updater` | Stores the best alpha that satisfies the knowledge-base acceptance criterion |
 
 ---
 
-## Knowledge Base Retrieval
 
-At each refinement step, the system retrieves relevant information from two knowledge bases using semantic similarity.
+## Experimental Setup
 
-Sentence embeddings are generated using:
+### Dataset
 
-```text
-all-MiniLM-L6-v2
-```
+| Item | Value |
+| --- | ---: |
+| Initial stock symbols | 500 |
+| Eligible stocks after coverage filtering | 449 |
+| Minimum data coverage | 80% |
+| Experiment period | 2021-01-04 to 2025-04-01 |
+| Trading days | 1,057 |
+| OHLCV records after filtering | 456,860 |
+| Average coverage of eligible stocks | 96.3% |
 
-and candidate knowledge is ranked using cosine similarity.
+### Chronological Split
 
-The two knowledge sources are:
+| Phase | Trading Days | Date Range | Purpose |
+| --- | ---: | --- | --- |
+| Training / Alpha Discovery | 748 | 2021-01-04 to 2023-12-31 | Alpha discovery and Main-KB accumulation |
+| Validation | 165 | 2024-01-01 to 2024-08-31 | Hyperparameter selection and ablation studies |
+| Held-out Testing | 144 | 2024-09-01 to 2025-04-01 | Final out-of-sample evaluation |
 
-* **Main KB** — retrieves similar validated alpha factors discovered during previous mining runs.
-* **101 Alpha KB** — retrieves relevant formula structures and patterns from the WorldQuant 101 Formulaic Alphas.
+During held-out testing, the Main KB is frozen and no further alpha accumulation or parameter tuning is performed.
 
-This retrieval mechanism provides the LLM agents with useful historical context instead of generating each alpha factor independently from scratch.
+### Default Configuration
+
+| Parameter | Value |
+| --- | ---: |
+| Inner-loop iterations | 5 |
+| Judge quality threshold | 7.5 / 10 |
+| Outer-loop iterations | 5 |
+| Main-KB IC threshold | 0.01 |
+| KB retrieval Top-K | 1 |
+| Forward-return horizon | 5 trading days |
+| Signal clipping range | `[-5, 5]` |
+| Liquidity filter | `vol_ratio >= 1.0` |
 
 ---
 
-## Multi-Agent Framework
+## Reported Results
 
-### WriterAgent
+### Alpha Discovery
 
-`WriterAgent` converts a natural-language trading hypothesis into executable alpha-factor code.
+| Metric | Result |
+| --- | ---: |
+| Held-out trading ideas | 10 |
+| Ideas producing alpha with IC >= 0.01 | 9 |
+| Average discovery time per idea | 1.5 min |
 
-Its input may include:
+### Mean Held-Out Test Performance
 
-* Trading idea
-* Similar factors retrieved from the Main KB
-* Relevant WorldQuant 101 Alpha patterns
-* Feedback from previous refinement rounds
+| Metric | Proposed Framework |
+| --- | ---: |
+| IC | **0.0480** |
+| ICIR | **0.4711** |
+| TIC | **5.60** |
+| Sharpe Ratio | **2.39** |
+| Win Rate | **65.0%** |
+| Maximum Drawdown | **7.8%** |
+| Valid Ratio | **85.0%** |
 
-Its output is an implementation compatible with the system's `AlphaBase` interface.
+### Comparison with AlphaForge
 
-### JudgeAgent
+| Method | IC | ICIR | TIC | Sharpe | WR | MDD | VR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| AlphaForge | 0.0337 | 0.3199 | 3.80 | 1.35 | 58.0% | 25.7% | 82.7% |
+| **Ours** | **0.0480** | **0.4711** | **5.60** | **2.39** | **65.0%** | **7.8%** | **85.0%** |
 
-`JudgeAgent` performs a pre-backtest review of the generated alpha implementation.
-
-It checks aspects such as:
-
-* Code validity
-* Logical consistency
-* Compatibility with available market features
-* Potential implementation problems
-
-Only suitable candidates proceed to historical backtesting.
-
-### BacktestEngine
-
-The `BacktestEngine` evaluates each generated alpha factor on historical Vietnamese stock-market data.
-
-Typical evaluation metrics include:
-
-* Information Coefficient (IC)
-* IC Information Ratio (ICIR)
-* Sharpe Ratio
-* Win Rate
-* Maximum Drawdown
-* Valid Ratio
-
-### ReviewerAgent
-
-`ReviewerAgent` analyzes the quantitative backtesting results and provides structured feedback.
-
-The feedback is passed back to `WriterAgent`, allowing the alpha factor to be improved during subsequent inner-loop iterations.
-
-Validated factors can then be stored in the Main KB for reuse in later alpha-mining runs.
+These results are specific to the Vietnamese-equity dataset and evaluation protocol described in the paper and should not be interpreted as guaranteed live-trading performance.
 
 ---
 
@@ -140,103 +115,42 @@ Validated factors can then be stored in the Main KB for reuse in later alpha-min
 
 ![Web Interface](templates/assets/icons/app.png)
 
-The system provides a web-based dashboard for interacting with the complete alpha-mining pipeline.
+The dashboard provides four main modules:
 
-Users can:
+| Module | Description |
+| --- | --- |
+| **Alpha Mining** | Run the complete multi-agent alpha-mining pipeline from a natural-language trading idea |
+| **Knowledge Base** | Browse, search, filter, and inspect accumulated alpha records |
+| **Market Prediction** | Use selected factors as features for 5-day forward-return prediction |
+| **Manual Backtest** | Execute custom alpha-factor code and inspect historical results |
 
-* Enter a trading idea in natural language
-* Configure inner-loop (`T`) and outer-loop (`K`) parameters
-* Start the alpha-mining process
-* Monitor real-time execution logs
-* Inspect generated alpha factors
-* Analyze quantitative evaluation results
-* Browse accumulated knowledge
-* Run custom alpha factors manually
-* Perform market-return prediction
-
-### Dashboard Modules
-
-| Tab                   | Description                                                                              |
-| --------------------- | ---------------------------------------------------------------------------------------- |
-| **Alpha Mining**      | Enter a trading idea and execute the full multi-agent alpha-mining pipeline              |
-| **Knowledge Base**    | Browse, search, filter, and analyze stored alpha factors                                 |
-| **Market Prediction** | Train a prediction model using selected alpha factors and forecast 5-day forward returns |
-| **Manual Backtest**   | Test custom alpha-factor code and inspect backtesting results                            |
+The interface also supports real-time execution logs, generated-factor inspection, parameter configuration, and result analysis.
 
 ---
 
-## Models
+## Publication
 
-The current implementation uses the following models:
-
-| Component       | Model                              |
-| --------------- | ---------------------------------- |
-| `WriterAgent`   | Llama-4-Scout-17B-16E via Groq API |
-| `JudgeAgent`    | LLaMA-3.1-8B via Groq API          |
-| `ReviewerAgent` | LLaMA-3.1-8B via Groq API          |
-| Embedding Model | `all-MiniLM-L6-v2`                 |
+**Minh-Son Vu, The-Trung Pham, and Hong-Viet Tran.**  
+**“Self-improving alpha mining for quantitative trading via multi-agent large language models with knowledge base accumulation.”**  
+*Machine Learning with Applications*, **25** (2026), Article **100987**.  
+[https://doi.org/10.1016/j.mlwa.2026.100987](https://doi.org/10.1016/j.mlwa.2026.100987)
 
 ---
 
-## Alpha Interface
+## Citation
 
-All generated alpha factors follow the `AlphaBase` interface.
-
-Example:
-
-```python
-class MyAlpha(AlphaBase):
-    inputs = ["close", "volume"]
-
-    def calc(self, data):
-        signal = ...  # Compute raw alpha signal
-
-        signal = signal.clip(-5, 5)
-        signal = signal.fillna(0)
-
-        return signal
-```
-
-Each alpha defines:
-
-* Required input features through `inputs`
-* Factor computation logic inside `calc()`
-* A standardized output signal compatible with the backtesting pipeline
-
----
-
-## Key Features
-
-* **LLM-Based Alpha Mining** — Generate quantitative alpha factors directly from natural-language trading hypotheses.
-* **Multi-Agent Refinement** — Use specialized Writer, Judge, and Reviewer agents to iteratively improve generated factors.
-* **Automated Backtesting** — Evaluate factors using IC, ICIR, Sharpe Ratio, Win Rate, Maximum Drawdown, and other quantitative metrics.
-* **Knowledge Accumulation** — Store successful alpha factors and reuse them in future mining runs.
-* **Semantic Knowledge Retrieval** — Retrieve related factors and formula patterns using sentence embeddings and cosine similarity.
-* **WorldQuant Alpha Integration** — Use the 101 Formulaic Alphas as an external structural knowledge source.
-* **Market Prediction** — Combine selected high-quality alpha factors for 5-day forward-return forecasting.
-* **Manual Backtesting** — Test custom alpha implementations directly through the dashboard.
-* **Interactive Dashboard** — Configure experiments and inspect results using a web-based interface.
-
----
-
-## Research
-
-This repository is associated with the following publication:
-
-**Vu, Minh-Son, Pham, The-Trung, and Tran, Hong-Viet.**
-**“Self-improving alpha mining for quantitative trading via multi-agent large language models with knowledge base accumulation.”**
-*Machine Learning with Applications*, Elsevier, 2026, Article 100987.
-
-If you use this repository or framework in your research, please cite:
+If you use this repository or research in your work, please cite:
 
 ```bibtex
 @article{vu2026self,
-  title={Self-improving alpha mining for quantitative trading via multi-agent large language models with knowledge base accumulation},
-  author={Vu, Minh-Son and Pham, The-Trung and Tran, Hong-Viet},
-  journal={Machine Learning with Applications},
-  pages={100987},
-  year={2026},
-  publisher={Elsevier}
+  title     = {Self-improving alpha mining for quantitative trading via multi-agent large language models with knowledge base accumulation},
+  author    = {Vu, Minh-Son and Pham, The-Trung and Tran, Hong-Viet},
+  journal   = {Machine Learning with Applications},
+  volume    = {25},
+  pages     = {100987},
+  year      = {2026},
+  publisher = {Elsevier},
+  doi       = {10.1016/j.mlwa.2026.100987}
 }
 ```
 
@@ -244,31 +158,15 @@ If you use this repository or framework in your research, please cite:
 
 ## Authors
 
-* **Vu Minh Son** — 23020424
-* **Pham The Trung** — 23020442
+**Minh-Son Vu · The-Trung Pham · Hong-Viet Tran**
 
-### Supervisor
-
-**Dr. Tran Hong Viet**
-
-Institute for Artificial Intelligence
-University of Engineering and Technology
-Vietnam National University, Hanoi
-Vietnam
+Institute for Artificial Intelligence  
+University of Engineering and Technology  
+Vietnam National University, Hanoi  
+Viet Nam
 
 ---
 
-## Citation
+## Disclaimer
 
-If this project is useful for your work, please consider citing our paper:
-
-```bibtex
-@article{vu2026self,
-  title={Self-improving alpha mining for quantitative trading via multi-agent large language models with knowledge base accumulation},
-  author={Vu, Minh-Son and Pham, The-Trung and Tran, Hong-Viet},
-  journal={Machine Learning with Applications},
-  pages={100987},
-  year={2026},
-  publisher={Elsevier}
-}
-```
+This repository is intended for **academic research and experimental quantitative analysis**. Generated factors, backtest results, and model outputs do not constitute investment advice or guarantees of future performance.
